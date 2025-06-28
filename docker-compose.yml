@@ -1,0 +1,171 @@
+version: '3.8'
+
+services:
+  # MongoDB pour le service Professeur
+  mongodb:
+    image: mongo:6.0
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - microservices-network
+
+  # MySQL pour le service Classe
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: classe_db
+      MYSQL_USER: user
+      MYSQL_PASSWORD: password
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - microservices-network
+
+  # Kafka et Zookeeper
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - microservices-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    networks:
+      - microservices-network
+
+  # Keycloak
+  keycloak:
+    image: quay.io/keycloak/keycloak:22.0
+    container_name: keycloak
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: password
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+    command: start-dev
+    networks:
+      - microservices-network
+
+  # PostgreSQL pour Keycloak
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - microservices-network
+
+  # Config Server
+  config-server:
+    build: ./config-server
+    container_name: config-server
+    ports:
+      - "8888:8888"
+    environment:
+      SPRING_PROFILES_ACTIVE: native
+      SPRING_CLOUD_CONFIG_SERVER_GIT_URI: https://github.com/your-username/microservice-config.git
+      SPRING_CLOUD_CONFIG_SERVER_GIT_USERNAME: your-username
+      SPRING_CLOUD_CONFIG_SERVER_GIT_PASSWORD: your-token
+    networks:
+      - microservices-network
+
+  # Eureka Server
+  eureka-server:
+    build: ./eureka-server
+    container_name: eureka-server
+    ports:
+      - "8761:8761"
+    depends_on:
+      - config-server
+    networks:
+      - microservices-network
+
+  # API Gateway
+  api-gateway:
+    build: ./api-gateway
+    container_name: api-gateway
+    ports:
+      - "8081:8081"
+    depends_on:
+      - eureka-server
+      - keycloak
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    networks:
+      - microservices-network
+
+  # Service Professeur
+  professeur-service:
+    build: ./professeur-service
+    container_name: professeur-service
+    ports:
+      - "8082:8082"
+    depends_on:
+      - mongodb
+      - eureka-server
+      - kafka
+      - config-server
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    networks:
+      - microservices-network
+
+  # Service Classe
+  classe-service:
+    build: ./classe-service
+    container_name: classe-service
+    ports:
+      - "8083:8083"
+    depends_on:
+      - mysql
+      - eureka-server
+      - kafka
+      - config-server
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    networks:
+      - microservices-network
+
+volumes:
+  mongodb_data:
+  mysql_data:
+  postgres_data:
+
+networks:
+  microservices-network:
+    driver: bridge 

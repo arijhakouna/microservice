@@ -1,0 +1,79 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: api-gateway
+  profiles:
+    active: dev
+  cloud:
+    config:
+      uri: http://config-server:8888
+      fail-fast: true
+    gateway:
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
+      routes:
+        # Routage statique pour le service Professeur
+        - id: professeur-service-static
+          uri: lb://professeur-service
+          predicates:
+            - Path=/api/professeurs/**
+          filters:
+            - StripPrefix=0
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 10
+                redis-rate-limiter.burstCapacity: 20
+        
+        # Routage statique pour le service Classe
+        - id: classe-service-static
+          uri: lb://classe-service
+          predicates:
+            - Path=/api/classes/**
+          filters:
+            - StripPrefix=0
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 10
+                redis-rate-limiter.burstCapacity: 20
+        
+        # Routage dynamique pour tous les autres services
+        - id: dynamic-routing
+          uri: lb://${service-name}
+          predicates:
+            - Path=/api/{service-name}/**
+          filters:
+            - StripPrefix=1
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 5
+                redis-rate-limiter.burstCapacity: 10
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://eureka-server:8761/eureka/
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
+    hostname: api-gateway
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+  endpoint:
+    health:
+      show-details: always
+    gateway:
+      enabled: true
+
+logging:
+  level:
+    org.springframework.cloud.gateway: DEBUG
+    com.microservice.gateway: DEBUG 

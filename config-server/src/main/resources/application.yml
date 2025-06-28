@@ -1,0 +1,28 @@
+server:
+  port: 8888
+
+spring:
+  application:
+    name: config-server
+  profiles:
+    active: native
+  cloud:
+    config:
+      server:
+        native:
+          search-locations: classpath:/config
+        git:
+          uri: ${SPRING_CLOUD_CONFIG_SERVER_GIT_URI:https://github.com/your-username/microservice-config.git}
+          username: ${SPRING_CLOUD_CONFIG_SERVER_GIT_USERNAME:your-username}
+          password: ${SPRING_CLOUD_CONFIG_SERVER_GIT_PASSWORD:your-token}
+          default-label: main
+          search-paths: config
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+  endpoint:
+    health:
+      show-details: always 
